@@ -103,8 +103,6 @@ open class WCInteractor {
 
         connectResolver = nil
         handshakeId = -1
-
-        WCSessionStore.clear(session.topic)
     }
 
     open func approveSession(accounts: [String], chainId: Int) -> Promise<Void> {
