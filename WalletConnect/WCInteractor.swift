@@ -48,12 +48,15 @@ open class WCInteractor {
     private let sessionRequestTimeout: TimeInterval
 
     private var peerId: String?
-    private var peerMeta: WCPeerMeta?
+    private var connectedToNewSession: Bool {
+        peerId == nil
+    }
 
-    public init(session: WCSession, meta: WCPeerMeta, uuid: UUID, sessionRequestTimeout: TimeInterval = 20) {
+    public init(session: WCSession, meta: WCPeerMeta, uuid: UUID, peerId: String? = nil, sessionRequestTimeout: TimeInterval = 20) {
         self.session = session
         self.clientId = uuid.description.lowercased()
         self.clientMeta = meta
+        self.peerId = peerId
         self.sessionRequestTimeout = sessionRequestTimeout
         self.state = .disconnected
 
@@ -187,7 +190,6 @@ extension WCInteractor {
             guard let params = request.params.first else { throw WCError.badJSONRPCRequest }
             handshakeId = request.id
             peerId = params.peerId
-            peerMeta = params.peerMeta
             sessionTimer?.invalidate()
             onSessionRequest?(request.id, params)
         case .sessionUpdate:
@@ -215,14 +217,7 @@ extension WCInteractor {
         }
     }
 
-    private func checkExistingSession() {
-        // check if it's an existing session
-        if let existing = WCSessionStore.load(session.topic), existing.session == session {
-            peerId = existing.peerId
-            peerMeta = existing.peerMeta
-            return
-        }
-
+    private func startSessionTimer() {
         // we only setup timer for new sessions
         sessionTimer = Timer.scheduledTimer(withTimeInterval: sessionRequestTimeout, repeats: false) { [weak self] _ in
             self?.onSessionRequestTimeout()
@@ -287,7 +282,9 @@ extension WCInteractor  {
         WCLog("<== websocketDidConnect")
 
         setupPingTimer()
-        checkExistingSession()
+        if connectedToNewSession {
+            startSessionTimer()
+        }
 
         subscribe(topic: session.topic)
         subscribe(topic: clientId)
