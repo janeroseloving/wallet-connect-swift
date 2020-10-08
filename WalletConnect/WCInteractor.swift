@@ -9,6 +9,7 @@ import Starscream
 import PromiseKit
 
 public typealias SessionRequestClosure = (_ id: Int64, _ peerParam: WCSessionRequestParam) -> Void
+public typealias SessionKillClosure = () -> Void
 public typealias DisconnectClosure = (Error?) -> Void
 public typealias CustomRequestClosure = (_ id: Int64, _ request: [String: Any]) -> Void
 public typealias ErrorClosure = (Error) -> Void
@@ -34,6 +35,7 @@ open class WCInteractor {
 
     // incoming event handlers
     public var onSessionRequest: SessionRequestClosure?
+    public var onSessionKill: SessionKillClosure?
     public var onDisconnect: DisconnectClosure?
     public var onError: ErrorClosure?
     public var onCustomRequest: CustomRequestClosure?
@@ -48,12 +50,15 @@ open class WCInteractor {
     private let sessionRequestTimeout: TimeInterval
 
     private var peerId: String?
-    private var peerMeta: WCPeerMeta?
+    private var connectedToNewSession: Bool {
+        peerId == nil
+    }
 
-    public init(session: WCSession, meta: WCPeerMeta, uuid: UUID, sessionRequestTimeout: TimeInterval = 20) {
+    public init(session: WCSession, meta: WCPeerMeta, uuid: UUID, peerId: String? = nil, sessionRequestTimeout: TimeInterval = 20) {
         self.session = session
         self.clientId = uuid.description.lowercased()
         self.clientMeta = meta
+        self.peerId = peerId
         self.sessionRequestTimeout = sessionRequestTimeout
         self.state = .disconnected
 
@@ -130,6 +135,7 @@ open class WCInteractor {
         let response = JSONRPCRequest(id: generateId(), method: WCEvent.sessionUpdate.rawValue, params: [result])
         return encryptAndSend(data: response.encoded)
             .map { [weak self] in
+                self?.onSessionKill?()
                 self?.disconnect()
             }
     }
@@ -187,7 +193,6 @@ extension WCInteractor {
             guard let params = request.params.first else { throw WCError.badJSONRPCRequest }
             handshakeId = request.id
             peerId = params.peerId
-            peerMeta = params.peerMeta
             sessionTimer?.invalidate()
             onSessionRequest?(request.id, params)
         case .sessionUpdate:
@@ -195,6 +200,7 @@ extension WCInteractor {
             let request: JSONRPCRequest<[WCSessionUpdateParam]> = try event.decode(decrypted)
             guard let param = request.params.first else { throw WCError.badJSONRPCRequest }
             if param.approved == false {
+                onSessionKill?()
                 disconnect()
             }
         default:
@@ -215,14 +221,7 @@ extension WCInteractor {
         }
     }
 
-    private func checkExistingSession() {
-        // check if it's an existing session
-        if let existing = WCSessionStore.load(session.topic), existing.session == session {
-            peerId = existing.peerId
-            peerMeta = existing.peerMeta
-            return
-        }
-
+    private func startSessionTimer() {
         // we only setup timer for new sessions
         sessionTimer = Timer.scheduledTimer(withTimeInterval: sessionRequestTimeout, repeats: false) { [weak self] _ in
             self?.onSessionRequestTimeout()
@@ -287,7 +286,9 @@ extension WCInteractor  {
         WCLog("<== websocketDidConnect")
 
         setupPingTimer()
-        checkExistingSession()
+        if connectedToNewSession {
+            startSessionTimer()
+        }
 
         subscribe(topic: session.topic)
         subscribe(topic: clientId)
