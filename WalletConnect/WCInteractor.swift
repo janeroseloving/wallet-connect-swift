@@ -9,6 +9,7 @@ import Starscream
 import PromiseKit
 
 public typealias SessionRequestClosure = (_ id: Int64, _ peerParam: WCSessionRequestParam) -> Void
+public typealias SessionKillClosure = () -> Void
 public typealias DisconnectClosure = (Error?) -> Void
 public typealias CustomRequestClosure = (_ id: Int64, _ request: [String: Any]) -> Void
 public typealias ErrorClosure = (Error) -> Void
@@ -34,6 +35,7 @@ open class WCInteractor {
 
     // incoming event handlers
     public var onSessionRequest: SessionRequestClosure?
+    public var onSessionKill: SessionKillClosure?
     public var onDisconnect: DisconnectClosure?
     public var onError: ErrorClosure?
     public var onCustomRequest: CustomRequestClosure?
@@ -133,6 +135,7 @@ open class WCInteractor {
         let response = JSONRPCRequest(id: generateId(), method: WCEvent.sessionUpdate.rawValue, params: [result])
         return encryptAndSend(data: response.encoded)
             .map { [weak self] in
+                self?.onSessionKill?()
                 self?.disconnect()
             }
     }
@@ -197,6 +200,7 @@ extension WCInteractor {
             let request: JSONRPCRequest<[WCSessionUpdateParam]> = try event.decode(decrypted)
             guard let param = request.params.first else { throw WCError.badJSONRPCRequest }
             if param.approved == false {
+                onSessionKill?()
                 disconnect()
             }
         default:
