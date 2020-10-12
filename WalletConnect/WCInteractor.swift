@@ -70,7 +70,11 @@ open class WCInteractor {
         self.bnb = WCBinanceInteractor()
         self.trust = WCTrustInteractor()
 
-        self.socket.delegate = self
+        socket.onConnect = { [weak self] in self?.onConnect() }
+        socket.onDisconnect = { [weak self] error in self?.onDisconnect(error: error) }
+        socket.onText = { [weak self] text in self?.onReceiveMessage(text: text) }
+        socket.onPong = { _ in WCLog("<== pong") }
+        socket.onData = { data in WCLog("<== websocketDidReceiveData: \(data.toHexString())") }
     }
 
     deinit {
@@ -78,6 +82,9 @@ open class WCInteractor {
     }
 
     open func connect() -> Promise<Bool> {
+        if socket.isConnected {
+            return Promise.value(true)
+        }
         socket.connect()
         state = .connecting
         return Promise<Bool> { [weak self] seal in
@@ -87,7 +94,7 @@ open class WCInteractor {
 
     open func pause() {
         state = .paused
-        socket.disconnect(closeCode: CloseCode.goingAway.rawValue)
+        socket.disconnect(forceTimeout: nil, closeCode: CloseCode.goingAway.rawValue)
     }
 
     open func resume() {
@@ -236,50 +243,8 @@ extension WCInteractor {
     }
 }
 
-extension WCInteractor: WebSocketDelegate {
-
-    public func didReceive(event: WebSocketEvent, client: WebSocket) {
-        switch event {
-        case .connected(_):
-            WCLog("<== connected")
-            self.onConnect()
-        case .disconnected(let error, let code):
-            WCLog("<== disconnect error: \(error), code: \(code)")
-            self.onDisconnect(error: nil)
-        case .text(let text):
-            self.onReceiveMessage(text: text)
-        case .ping:
-            WCLog("<== ping")
-        case .pong(_):
-            WCLog("<== pong")
-        case .binary(let data):
-            WCLog("<== websocketDidReceiveData: \(data.toHexString())")
-        case .cancelled:
-            WCLog("<== cancelled")
-            self.onDisconnect(error: nil)
-        case .reconnectSuggested:
-            WCLog("<== reconnectSuggested")
-            self.disconnect()
-            self.connect()
-        case .viabilityChanged(let viable):
-            WCLog("<== viabilityChanged -> \(viable)")
-            if viable {
-                if state != .connecting {
-                    self.resume()
-                }
-            } else {
-                self.pause()
-            }
-        case .error(let error):
-            WCLog("<== error: \(error)")
-            self.disconnect()
-        }
-    }
-
-}
-
 // MARK: WebSocket event handler
-extension WCInteractor  {
+extension WCInteractor {
     private func onConnect() {
         WCLog("<== websocketDidConnect")
 
