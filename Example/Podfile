@@ -1,4 +1,4 @@
-platform :ios, '11.0'
+platform :ios, '13.0'
 inhibit_all_warnings!
 use_frameworks!
 
@@ -8,8 +8,10 @@ install! 'cocoapods', :generate_multiple_pod_projects => true
 
 target 'WalletConnect_Example' do
   pod 'WalletConnect', :path => '../'
-  pod 'TrustWalletCore' 
-  pod 'SwiftLint' 
+  pod 'TrustWalletCore'
+  pod 'SwiftLint'
+  pod 'HsToolKit.swift', git: 'https://github.com/horizontalsystems/hs-tool-kit-ios'
+  
   target 'WalletConnect_Tests' do
     inherit! :search_paths
   end
