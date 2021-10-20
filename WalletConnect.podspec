@@ -1,5 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'WalletConnect'
+  s.module_name      = 'WalletConnectV1'
   s.version          = '0.1.0'
   s.summary          = 'WalletConnect Swift SDK'
   s.description      = 'WalletConnect Swift SDK'
